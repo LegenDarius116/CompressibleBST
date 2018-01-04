@@ -1,0 +1,571 @@
+/*
+ * BST.cpp
+ *
+ *  Created on: Nov 6, 2017
+ *      Author: mener
+ */
+
+#include "BST.h"
+#include "Bag.h"
+#include <cstdlib>
+#include <cassert>
+#include <functional>
+
+template<class T>
+void BST<T>::tree_clear(Node<T>*& root_ptr) {
+	// postcondition: removes all nodes on the tree, active and inactive
+	// This function handles pointers, as well as m_active and m_inactive
+
+	Node<T>* child;
+
+	if(root_ptr != nullptr) {
+		
+		// recursively clears left subtree
+		child = root_ptr->m_left;
+		tree_clear(child);
+
+		// recursively clears right subtree
+		child = root_ptr->m_right;
+		tree_clear(child);
+
+		// handle the node counters
+		if(root_ptr->m_act) --m_active;
+		else --m_inactive;
+		
+		// clean up
+		delete root_ptr;
+		root_ptr = nullptr;
+	}
+
+}
+
+template<class T>
+Node<T>* BST<T>::tree_copy(const Node<T>* root_ptr) {
+	// postcondition: copies over other tree's nodes and returns root node
+
+	Node<T>* l_ptr;
+	Node<T>* r_ptr;
+
+	if(root_ptr == nullptr)
+		return nullptr;
+	else {
+		l_ptr = tree_copy(root_ptr->m_left);
+		r_ptr = tree_copy(root_ptr->m_right);
+
+		Node<T>* new_root = new Node<T>(root_ptr->m_val);
+		new_root->m_left = l_ptr;
+		new_root->m_right = r_ptr;
+
+		return new_root;
+	}
+}
+
+template<class T>
+BST<T>::BST(const BST<T>& bb) {
+	m_root = tree_copy(bb.m_root);
+	
+	m_active = bb.m_active;
+	m_inactive = bb.m_inactive;
+}
+
+template<class T>
+void BST<T>::operator=(const BST& bb) {
+	// check for self-assignment
+	if(this == &bb) return;
+	
+	// clear previous data
+	tree_clear(m_root);
+
+	// copy over new data
+	m_root = tree_copy(bb.m_root);
+	
+	m_active = bb.m_active;
+	m_inactive = bb.m_inactive;
+}
+
+template<class T>
+BST<T>::~BST() {
+	tree_clear(m_root);
+	
+	// ensure that sizes are all zero
+	
+	if(m_root != nullptr) {
+		std::cout << "[Destructor] Error: m_root is not null!\n";
+	}
+	
+	if(m_active != 0) {
+		std::cout << "[Destructor] Error: m_active is not zero! (" << m_active << ")\n";
+		//abort(); // temp disable
+	}
+	
+	if(m_inactive != 0) {
+		std::cout << "[Destructor] Error: m_inactive is not zero! (" << m_inactive << ")\n";
+		//abort();	// temp disable
+	}
+}
+
+template<class T>
+bool BST<T>::remove(const T& itm) {
+	// search for node in BST 
+	
+	// assert nonempty tree
+	assert(m_active && m_root);
+	
+	Node<T>* cursor = m_root;
+	Node<T>* previous = m_root;		// used to sever the relationship between removed node and its parent
+	
+	while (cursor != nullptr) {
+		// found active node to be removed
+		// if node inactive, will still skip and move on
+		if(cursor->m_val == itm && cursor->m_act) { 
+			
+			// node is a leaf; just remove
+			if(cursor->is_leaf()) {
+				
+				// sever the relationship
+				if(previous->m_right == cursor)
+					previous->m_right = nullptr;
+				else if (previous->m_left == cursor)
+					previous->m_left = nullptr;
+				else
+					std::cout << "[remove] fatal error: severance failed.\n";
+				
+				delete cursor;
+				
+				cursor = nullptr;
+			} else {
+				
+				// node is an internal node
+				cursor->m_act = false;
+				
+				++m_inactive;
+			}
+			
+			--m_active;
+			
+			return true;
+		} else {
+			// keep searching...
+			if(itm <= cursor->m_val) {
+				previous = cursor;
+				cursor = cursor->m_left;
+			} else {
+				previous = cursor;
+				cursor = cursor->m_right;
+			}
+			
+		}
+	}
+	
+	return false;
+}
+
+template<class T>
+void BST<T>::insert(const T& itm) {
+	// enforce strict weak ordering
+	Node<T>* element = new Node<T>(itm); 	// rest of the values are handled by given constructor
+	++m_active;								// increment size
+	
+	// case: no elements, new root!
+	if(m_root == nullptr) {
+		m_root = element;
+	} else {
+		Node<T>* cursor = m_root; // start at the root.
+		
+		// pretend to search for exact entry
+		bool done = false;
+		
+		// traverse to the last leaf
+		while (!done) {
+			if(itm <= cursor->m_val) {
+				
+				done = cursor->m_left == nullptr;
+				
+				if(done)
+					cursor->m_left = element; // you've reached the end and found the spot to insert
+				else
+					cursor = cursor->m_left; // otherwise keep moving
+			} else {
+				
+				done = cursor->m_right == nullptr;
+				
+				if(done)
+					cursor->m_right = element;
+				else
+					cursor = cursor->m_right;
+			}
+		}
+	}
+	
+}
+
+template<class T>
+bool BST<T>::is_member(const T& itm) const {
+	Node<T>* cursor = m_root; // start at the root.
+	
+	while (cursor != nullptr) {
+		
+		// found active node containing itm
+		if(cursor->m_val == itm && cursor->m_act) {
+			return true;
+		}
+		
+		// if not, keep searching!
+		if(itm <= cursor->m_val) {
+			cursor = cursor->m_left;
+		} else {
+			cursor = cursor->m_right;
+		}
+	}
+	
+	// couldn't find the element within the tree; must not be in it
+	return false;
+}
+
+template<class T>// find all inactive nodes and swap
+void BST<T>::compress() {
+
+	compress_all(m_root);
+	
+	if(m_inactive != 0)
+		std::cout << "[Compress]Error: " << m_inactive << " internal nodes still remain!\n";
+}
+
+// helper function for the compress() function
+template<class T>
+void BST<T>::compress_subtree(Node<T>* root_ptr) {
+	// precondition: 	root_ptr is the root of its own subtree, not necessarily m_root
+	//					root_ptr is an inactive node that is being deleted
+	// postcondition:	root_ptr has been released to the heap, with a successor/predecessor in its place
+	//					m_active has decreased by 1
+	
+	assert(root_ptr);
+	
+	if(!root_ptr->m_act) {
+		--m_inactive;
+		
+		// case 0: the node is a leaf. This is handled directly by the remove() function
+		// will add this just in case
+		if(root_ptr->is_leaf()) {
+			if(root_ptr == m_root) {
+				delete m_root;
+				m_root = nullptr;
+				
+			} else {
+				Node<T>* parent = find_parent(root_ptr, m_root);
+				
+				if(parent->m_left == root_ptr)
+					parent->m_left = nullptr;
+				else if(parent->m_right == root_ptr)
+					parent->m_right = nullptr;
+				else
+					std::cout << "[compress_subtree] fatal error: parent of root_ptr (leaf case) not found\n";
+				
+				delete root_ptr;
+				root_ptr = nullptr;
+			}
+			
+			return;
+		}
+		
+		// case 1: the node only has one child
+		bool left = root_ptr->m_left != nullptr; 		// true if left exists
+		bool right = root_ptr->m_right != nullptr; 		// true if right exists
+
+		// conditional is an XOR function, either left exists and right doesn't
+		// or right exists and left doesn't. No other conditions can satisfy
+		if(left != right) {
+			// get parent and link it to the successor node
+			Node<T>* parent = find_parent(root_ptr, m_root);
+			
+			// if left is the only child, then successor is the left child of node to be deleted
+			// otherwise the successor will be the right child. Previous condition enforces that only
+			// one of these will exist
+			Node<T>* successor = left ? root_ptr->m_left : root_ptr->m_right;
+			
+			// if m_root happens to be that inactive node we're trying to delete, simply replace it
+			// (m_root has no parents)
+			
+			// need to add m_root case for case 2
+			if(root_ptr == m_root) {
+				m_root = successor;
+				delete root_ptr;
+				root_ptr = nullptr;
+				
+				return;
+			}
+			
+			// otherwise, link parent of root_ptr to its successor, and then delete root_ptr
+			// first find out which child node_ptr was
+			
+			if(parent->m_left == root_ptr) {
+				parent->m_left = successor;
+				
+				delete root_ptr;
+				root_ptr = nullptr;
+			} else if (parent->m_right == root_ptr) {
+				parent->m_right = successor;
+				
+				delete root_ptr;
+				root_ptr = nullptr;
+			} else {
+				std::cout << 
+					"[Compress_subtree] get_parent() function has failed."
+						<< " Parent is not the parent of root_ptr\n";
+				
+				//++m_inactive; // undo change, since no actual node was removed. Let's hope this part is not reached
+			}
+			
+			return;
+		}
+		
+		// case 2: The node has two children
+		if(left && right) {
+			// idea is to reduce into leaf case or one-child case
+			
+			Node<T>* successor = root_ptr->m_right;
+			Node<T>* successor_parent = root_ptr; // may not need
+			const Node<T>* original = root_ptr; 	// will be used in case the node to be removed is m_root
+			
+			// find successor node, leftmost node in right subtree or rightmost node in left subtree
+			// copy its value to inactive node and reactivate it
+			// the successor node will either be a leaf or have one child; handle accordingly
+			
+			while(successor->m_left != nullptr) {
+				successor_parent = successor;
+				successor = successor->m_left;
+			}
+			
+			// found the successor, and has a parent to it, so no need to call the parent function
+			root_ptr->m_val = successor->m_val;
+			root_ptr->m_act = true;
+
+			successor->m_act = false;
+			
+			//compress_subtree(successor); // causes a segmentation fault?
+			
+			bool succ_left = successor->m_left != nullptr;
+			bool succ_right = successor->m_right != nullptr;
+			
+			// subcase 1: successor is a leaf;
+			if(successor->is_leaf()) {
+				// sever the relationship
+				
+				if(successor_parent->m_left == successor) {
+					// sever the relationship
+					successor_parent->m_left = nullptr;
+					
+					// release the node to the heap and set it to nullptr
+					delete successor;
+					successor = nullptr;
+				} else if(successor_parent->m_right == successor) {
+					
+					successor_parent->m_right = nullptr;
+					
+					delete successor;
+					successor = nullptr;
+				} else {
+					std::cout << "[compress_subtree] fatal error: case 2, deleting leaf subnode\n";
+				}
+				
+				return;
+			} else if (succ_left != succ_right) {
+				// subcase 2: successor has one child
+				
+				// this points to the successor's child
+				Node<T>* new_link = succ_left ? successor->m_left : successor->m_right;
+
+				// relink parent of successor to successor's child, then delete successor
+				if(successor_parent->m_left == successor)
+					successor_parent->m_left = new_link;
+				else if(successor_parent->m_right == successor)
+					successor_parent->m_right = new_link;
+				else
+					std::cout << "[compress_subtree] fatal error: could not relink parent with grandchild\n";
+
+				//compress_subtree(successor);
+				return;
+			} else {
+				std::cout << "[compress_subtree] fatal error: case 2 successor has two children!\n";
+			}
+			
+		}
+		
+	}
+	
+}
+
+template<class T>
+void BST<T>::compress_all(Node<T>* root_ptr) {
+	// precondition: 	root_ptr exists
+	// postcondition:	whole tree has been traversed and cleared of inactive nodes
+	// 					Will use postorder traversal
+	
+	if(root_ptr != nullptr) {
+		compress_all(root_ptr->m_left);
+		compress_all(root_ptr->m_right);
+
+		compress_subtree(root_ptr);
+	}
+}
+
+template<class T>
+Node<T>* BST<T>::find_parent(Node<T>* node_ptr, Node<T>* parent) {
+	// precondition: 	node_ptr is not null.
+	// postcondition: 	returns nullptr if node_ptr is the root of the whole tree
+	//					otherwise will return the node's parent
+	// Note:			Don't really need to know which child it is. Can determine that by using comparators
+	//					parent is equal to m_root by default
+	
+	assert(node_ptr); // assert that node_ptr actually points to something
+	
+	if(node_ptr == m_root) return nullptr;
+	
+	// found the parent of the node!
+	bool is_child = parent->m_left == node_ptr || parent->m_right == node_ptr;
+	
+	if(is_child) return parent;
+	else {
+		// otherwise, keep looking!
+		if(node_ptr->m_val <= parent->m_val)
+			find_parent(node_ptr, parent->m_left);
+		else
+			find_parent(node_ptr, parent->m_right);
+	}
+}
+
+// produce a sorted descending bag; insert all active nodes & ignore inactive nodes
+// only does the first element... let's try not a lambda
+template<class T>
+Bag<T> BST<T>::sort() const {
+	Bag<T> b(m_active); // creates a bag with m_active reserved slots
+	
+	// will pass this lambda to generalized version of 
+	// traversal (backwards in-order) function
+	
+	std::function<void(Node<T>*)> insert_to_bag  = [&](Node<T>* node_ptr) -> void {
+		b.insert(node_ptr->m_val);
+	};
+	
+	// only active nodes
+	binorder(insert_to_bag, m_root, true);
+	
+	if(b.size() != m_active) {
+		std::cout << "\n[sort] Error: internal bag and bst sizes are not the same: (bag: " << 
+				b.size() << " vs. bst: " << m_active << ")\n";
+		
+		// losing one somehow?
+	}
+	
+	b.sort_descending();
+	
+	return b;
+}
+
+template<class T>
+void insert_bag(Bag<T>& b, const Node<T>* node_ptr) {
+	
+	if(node_ptr != nullptr) {
+		insert_bag(b, node_ptr->m_left);
+		
+		if(node_ptr->m_act) b.insert(node_ptr->m_val);
+		
+		insert_bag(b, node_ptr->m_right);
+	}
+}
+
+// process f is called with a single pointer argument
+// active is default true
+// -------------------------
+// mini-invariant for active parameter:
+//	if active is true, will only process active nodes
+//	otherwise, this function will only process inactive nodes
+template<class Process, class T>
+void binorder(Process f, Node<T>* node_ptr, bool active) {
+	// preconditon:	node_ptr points to the root of a subtree
+	// 				f is a function that takes a single node<T>* argument
+	//				
+	
+	// right subtree, then root, then left subtree (backwards in-order)
+	
+	if(node_ptr != nullptr) {
+		binorder(f, node_ptr->m_right, active);
+		
+		// apply function; if active is true, will only process active nodes
+		// if active is false, will only process inactive nodes
+		// looks like an XNOR switch function! Represented by == operator
+		if(active == node_ptr->m_act)
+			f(node_ptr);
+		
+		binorder(f, node_ptr->m_left, active);
+	}
+}
+
+template<class Process, class T>
+void preorder(Process f, Node<T>* node_ptr, bool active) {
+	if(node_ptr != nullptr) {
+		if(active == node_ptr->m_act)
+			f(node_ptr);
+		
+		preorder(f, node_ptr->m_left, active);
+		preorder(f, node_ptr->m_right, active);
+	}
+}
+
+template<class Process, class T>
+void inorder(Process f, Node<T>* node_ptr, bool active) {
+	if(node_ptr != nullptr) {
+		inorder(f, node_ptr->m_left, active);
+		
+		if(active == node_ptr->m_act)
+			f(node_ptr);
+		
+		
+		inorder(f, node_ptr->m_right, active);
+	}
+}
+
+// may need an equality override between tree and normal bag
+// partially works; inserting elements is equal, but iterative insertion using bag iterators returns false
+template<class T>
+bool operator==(const BST<T>& bst, const Bag<T>& b) {
+	if(bst.size() != b.size()){
+		std::cout << "[operator==]Sizes are unequal! (" << bst.size() << " vs. " << b.size() << ")\n";
+		return false;
+	}
+	
+	Bag<T> lhs = bst.sort();
+	Bag<T> rhs(b);
+	
+	rhs.sort_descending();
+	
+	//assert(lhs.size() == rhs.size()); // it aint the same...
+	
+	for(lhs.begin(), rhs.begin(); !(lhs.end() or rhs.end()); lhs++, rhs++) {
+		if(lhs.get() != rhs.get())
+			return false;
+	}
+	
+	return true;
+}
+
+template<class T>
+bool operator==(const Bag<T>& b, const BST<T>& bst) {
+	return bst == b;
+}
+
+template<class T1>
+std::ostream& operator<<(std::ostream& o, const BST<T1>& bst) {
+	std::function<void(Node<T1>* root_ptr)> print_elem = [&] (Node<T1>* root_ptr) -> void {
+		o << root_ptr->m_val;
+	};
+	
+	inorder(print_elem, bst.m_root, true);
+	
+	return o;
+}
+
+// some more notes
+// establishing equality between uncompressed tree and compressed tree
+// 	* need same size & same elements
+//	for every active item in x-tree, find it in y-tree using is_member

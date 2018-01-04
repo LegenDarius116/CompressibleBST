@@ -1,0 +1,239 @@
+// Revised Bag container with simple iterator.
+// Adapted from Main & Savitch.  
+
+#ifndef MAIN_SAVITCH_BAG2_H
+#define MAIN_SAVITCH_BAG2_H
+#include <iostream> 
+#include <cstdlib>  // Provides size_t
+#include <cassert>
+#include <cstring>
+#include <algorithm>    // Provides copy function
+#include <functional>
+#include <ostream>
+#include "Bag.h"
+
+template<class Item>
+const typename Bag<Item>::size_type Bag<Item>::DEFAULT_CAPACITY;
+
+template<class Item>
+Bag<Item>::Bag(size_type initial_capacity)
+{
+  data = new value_type[initial_capacity];
+  capacity = initial_capacity;
+  used = 0;
+}
+
+template<class Item>
+Bag<Item>::Bag(const Bag<Item>& source)
+  // Library facilities used: algorithm
+{
+  data = new value_type[source.capacity];
+  capacity = source.capacity;
+  used = source.used;
+  std::copy(source.data, source.data + used, data);
+}
+
+template<class Item>
+void Bag<Item>::reserve(size_type new_capacity)
+  // Library facilities used: algorithm
+{
+  value_type *larger_array;
+  
+  if (new_capacity == capacity)
+    return; // The allocated memory is already the right size.
+  
+  if (new_capacity < used)
+    new_capacity = used; // Can’t allocate less than we are using.
+  
+  larger_array = new value_type[new_capacity];
+  std::copy(data, data + used, larger_array);
+  delete [ ] data;
+  data = larger_array;
+  capacity = new_capacity;
+}
+
+template<class Item>
+typename Bag<Item>::size_type Bag<Item>::erase(const value_type& target)
+{
+  size_type index = 0;
+  size_type many_removed = 0;
+  
+  while (index < used) {
+    if (data[index] == target) {
+      --used;
+      data[index] = data[used];
+      ++many_removed;
+    }
+    else ++index;
+  }
+  return many_removed;
+}
+
+template<class Item>
+typename Bag<Item>::value_type Bag<Item>::remove_random_element() {
+	Bag<Item>::value_type elem = get_random_element();
+	
+	erase_one(elem);
+	
+	return elem;
+}
+
+template<class Item>
+bool Bag<Item>::erase_one(const value_type& target)
+{
+  size_type index; // The location of target in the data array    
+  
+  // First, set index to the location of target in the data array,
+  // which could be as small as 0 or as large as used-1.
+  // If target is not in the array, then index will be set equal to used.
+  index = 0;
+  while ((index < used) && (data[index] != target))
+    ++index;
+  
+  if (index == used) // target isn't in the Bag, so no work to do
+    return false;
+  
+  // When execution reaches here, target is in the Bag at data[index].
+  // So, reduce used by 1 and copy the last item onto data[index].
+  --used;
+  data[index] = data[used];
+  return true;
+}
+
+template<class Item>
+void Bag<Item>::insert(const value_type& entry)
+{   
+  if (used == capacity) reserve(used+1);
+  data[used] = entry;
+  ++used;
+}
+
+template<class Item>
+void Bag<Item>::operator +=(const Bag<Item>& addend)
+  // Library facilities used: algorithm
+{
+  if (used + addend.used > capacity)
+    reserve(used + addend.used);
+  
+  copy(addend.data, addend.data + addend.used, data + used);
+  used += addend.used;
+}
+
+template<class Item>
+void Bag<Item>::operator =(const Bag<Item>& source)
+  // Library facilities used: algorithm
+{
+  value_type *new_data;
+  
+  // Check for possible self-assignment:
+  if (this == &source) return;
+  
+  // If needed, allocate an array with a different size:
+  if (capacity != source.capacity) { 
+    new_data = new value_type[source.capacity];
+    delete [ ] data;
+    data = new_data;
+    capacity = source.capacity;
+  }
+  // Copy the data from the source array:
+  used = source.used;
+  std::copy(source.data, source.data + used, data);
+}
+
+template<class Item>
+typename Bag<Item>::size_type Bag<Item>::count(const value_type& target) const
+{
+  size_type answer;
+  size_type i;
+  
+  answer = 0;
+  for (i = 0; i < used; ++i)
+    if (target == data[i]) ++answer;
+  return answer;
+}
+
+// NONMEMBER FUNCTION for the Bag class
+template<class Item>
+Bag<Item> operator +(const Bag<Item>& b1, const Bag<Item>& b2)
+{
+  Bag<Item> answer(b1.size( ) + b2.size( ));
+  
+  answer += b1; 
+  answer += b2;
+  return answer;
+}
+
+template<class Item>
+std::ostream& operator<<(std::ostream& o, const Bag<Item>& b) {
+	Bag<Item> bb(b); // copy of b to allow me to use simple iterators
+	
+	// using simple iterator
+	for(bb.begin(); !bb.end(); bb++) {
+		Item itm(bb.get());
+		o << itm;
+	}
+	
+	return o << std::endl;
+}
+
+template<class Item>
+void Bag<Item>::sort_descending() {
+	//std::sort(data, data + used); // The easy way out
+
+	// lambda function to take care of quicksort's partition function
+	auto partition = [](value_type data[], size_t used, size_t& pivot_idx)
+	// Precondition: used > 1, and data is an array (or subarray)
+	// with at least used elements.
+	// Postcondition: The function has selected some “pivot value”
+	// that occurs in data[0]. . .data[used-1]. The elements of data
+	// have then been rearranged and the pivot index set so that
+	// -- data[pivot_index] is equal to the pivot;
+	// -- each item before data[pivot_index] is <= the pivot;
+	// -- each item after data[pivot_index] is > the pivot.
+	-> void {
+		assert(used > 1);
+
+		// 1.
+		value_type pivot = data[0];
+		size_t too_big_idx = 1, too_small_idx = used - 1;
+
+		// 2.
+		while(too_big_idx <= too_small_idx) {
+			if(too_big_idx < used && data[too_big_idx] <= pivot)
+				++too_big_idx;
+
+			if(data[too_small_idx] >= pivot)
+				--too_small_idx;
+
+			if(too_big_idx < too_small_idx)
+				std::swap(data[too_big_idx], data[too_small_idx]);
+		}
+
+		// 3.
+		pivot_idx = too_small_idx;
+		std::swap(data[pivot_idx], data[0]);
+	};
+
+	// lambda function for quicksort
+	std::function<void(value_type[], size_t&)> quicksort =
+			[&](value_type data[], size_t& used) -> void {
+		size_t pivot_idx, n1, n2;
+
+		if(used > 1) {
+			partition(data, used, pivot_idx);
+
+			n1 = pivot_idx;
+			n2 = used - n1 - 1;
+
+			// recursive calls to sort the subarrays
+			quicksort(data, n1);
+			quicksort((data + pivot_idx + 1), n2);
+		}
+	};
+
+	quicksort(data, used);
+
+	std::reverse(data, data + used);
+}
+
+#endif
